@@ -48,8 +48,8 @@ async function handleSave() {
     });
     emit('close');
   } catch (err: unknown) {
-    const axiosError = err as { response?: { data?: { error?: string } } };
-    error.value = axiosError.response?.data?.error || 'Failed to update channel';
+    const typedError = err as Error;
+    error.value = typedError.message || 'Failed to update channel';
   } finally {
     isSaving.value = false;
   }
@@ -62,8 +62,8 @@ async function handleKick(user: User & { role: MemberRole }) {
   try {
     await channelStore.kickMember(channelStore.activeChannelId, user.id);
   } catch (err: unknown) {
-    const axiosError = err as { response?: { data?: { error?: string } } };
-    error.value = axiosError.response?.data?.error || 'Failed to kick member';
+    const typedError = err as Error;
+    error.value = typedError.message || 'Failed to kick member';
   }
 }
 
@@ -73,8 +73,8 @@ async function handleAddMember(user: User) {
   try {
     await channelStore.addMember(channelStore.activeChannelId, user.id);
   } catch (err: unknown) {
-    const axiosError = err as { response?: { data?: { error?: string } } };
-    error.value = axiosError.response?.data?.error || 'Failed to add member';
+    const typedError = err as Error;
+    error.value = typedError.message || 'Failed to add member';
   }
 }
 
@@ -86,8 +86,8 @@ async function handleDelete() {
     await channelStore.deleteChannel(channelStore.activeChannelId);
     emit('close');
   } catch (err: unknown) {
-    const axiosError = err as { response?: { data?: { error?: string } } };
-    error.value = axiosError.response?.data?.error || 'Failed to delete channel';
+    const typedError = err as Error;
+    error.value = typedError.message || 'Failed to delete channel';
   }
 }
 

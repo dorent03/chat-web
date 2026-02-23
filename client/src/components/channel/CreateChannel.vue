@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useChannelStore } from '../../stores/channel.store';
-import { useSocketStore } from '../../stores/socket.store';
 
 const emit = defineEmits<{
   (e: 'close'): void;
@@ -9,7 +8,6 @@ const emit = defineEmits<{
 }>();
 
 const channelStore = useChannelStore();
-const socketStore = useSocketStore();
 
 const name = ref('');
 const type = ref<'public' | 'private'>('public');
@@ -26,19 +24,16 @@ async function handleCreate() {
 
   isCreating.value = true;
   try {
-    const channel = await channelStore.createChannel({
+    await channelStore.createChannel({
       name: name.value.trim(),
       type: type.value,
       description: description.value.trim() || undefined,
     });
 
-    /* Auto-join the socket room */
-    socketStore.joinChannel(channel.id);
-
     emit('created');
   } catch (err: unknown) {
-    const axiosError = err as { response?: { data?: { error?: string } } };
-    error.value = axiosError.response?.data?.error || 'Failed to create channel';
+    const typedError = err as Error;
+    error.value = typedError.message || 'Failed to create channel';
   } finally {
     isCreating.value = false;
   }

@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue';
 import { useChannelStore } from '../../stores/channel.store';
-import { useSocketStore } from '../../stores/socket.store';
+import { useRealtimeStore } from '../../stores/realtime.store';
 import { useMessageStore } from '../../stores/message.store';
 
 const channelStore = useChannelStore();
-const socketStore = useSocketStore();
+const realtimeStore = useRealtimeStore();
 const messageStore = useMessageStore();
 
 onMounted(async () => {
@@ -20,25 +20,11 @@ const privateAndDirectChannels = computed(() =>
 );
 
 async function selectChannel(channelId: string) {
-  /* Leave previous channel room */
-  if (channelStore.activeChannelId) {
-    socketStore.leaveChannel(channelStore.activeChannelId);
-  }
-
   channelStore.setActiveChannel(channelId);
+  realtimeStore.subscribeToChannel(channelId);
 
-  /* Join new channel room */
-  socketStore.joinChannel(channelId);
-
-  /* Fetch messages */
   await messageStore.fetchMessages(channelId);
-  await messageStore.fetchPinnedMessages(channelId);
-
-  /* Clear unread */
   channelStore.clearUnread(channelId);
-
-  /* Close thread panel */
-  messageStore.closeThread();
 }
 
 function getChannelIcon(type: string): string {

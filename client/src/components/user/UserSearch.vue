@@ -64,7 +64,7 @@ function selectUser(user: User) {
       <UserAvatar :username="user.username" :avatar-url="user.avatar_url" :user-id="user.id" :size="32" show-status />
       <div>
         <div class="text-sm font-medium text-surface-900 dark:text-white">{{ user.username }}</div>
-        <div class="text-xs text-surface-500">{{ user.email }}</div>
+        <div class="text-xs text-surface-500">{{ user.status }}</div>
       </div>
     </div>
   </div>

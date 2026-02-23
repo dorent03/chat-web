@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useAuthStore } from '../../stores/auth.store';
-import { useSocket } from '../../composables/useSocket';
-import { useMessageStore } from '../../stores/message.store';
+import { useChannelStore } from '../../stores/channel.store';
 import * as messageApi from '../../services/message.api';
 import UserAvatar from '../user/UserAvatar.vue';
 import type { MessageWithSender } from '../../types';
@@ -12,32 +11,33 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  (e: 'openThread', message: MessageWithSender): void;
   (e: 'edit', message: MessageWithSender): void;
 }>();
 
 const authStore = useAuthStore();
-const messageStore = useMessageStore();
-const { deleteMessage, addReaction, removeReaction } = useSocket();
-
+const channelStore = useChannelStore();
 const showActions = ref(false);
 const showReactionPicker = ref(false);
-const isVoting = ref(false);
-const isPinning = ref(false);
-
-const isOwnMessage = computed(() =>
-  props.message.sender_id === authStore.user?.id
-);
-
 const QUICK_REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🎉'];
 
-const isMentionedMessage = computed(() => {
-  if (!authStore.user?.username) return false;
-  return (props.message.mentions || []).includes(authStore.user.username);
-});
+const isOwnMessage = computed(() => props.message.sender_id === authStore.user?.id);
 
-const isPinned = computed(() => !!props.message.pinned);
-const canPin = computed(() => !props.message.parent_id);
+const groupedReactions = computed(() => {
+  const grouped = new Map<string, { emoji: string; count: number; hasOwn: boolean }>();
+  for (const reaction of props.message.reactions ?? []) {
+    const current = grouped.get(reaction.emoji) ?? {
+      emoji: reaction.emoji,
+      count: 0,
+      hasOwn: false,
+    };
+    current.count += 1;
+    if (reaction.user_id === authStore.user?.id) {
+      current.hasOwn = true;
+    }
+    grouped.set(reaction.emoji, current);
+  }
+  return Array.from(grouped.values());
+});
 
 function formatTime(dateStr: string): string {
   const date = new Date(dateStr);
@@ -47,122 +47,37 @@ function formatTime(dateStr: string): string {
   });
 }
 
-function formatDate(dateStr: string): string {
-  const date = new Date(dateStr);
-  const today = new Date();
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-
-  if (date.toDateString() === today.toDateString()) return 'Today';
-  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
-  return date.toLocaleDateString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: date.getFullYear() !== today.getFullYear() ? 'numeric' : undefined,
-  });
-}
-
-function handleReaction(emoji: string) {
-  const existingReaction = props.message.reactions?.find(
-    (r) => r.emoji === emoji && r.user_id === authStore.user?.id
+async function handleReaction(emoji: string) {
+  const channelId = channelStore.activeChannelId;
+  if (!channelId) {
+    return;
+  }
+  const hasOwnReaction = (props.message.reactions ?? []).some(
+    (reaction) => reaction.user_id === authStore.user?.id && reaction.emoji === emoji
   );
 
-  if (existingReaction) {
-    removeReaction(props.message.id, emoji);
-  } else {
-    addReaction(props.message.id, emoji);
-  }
-  showReactionPicker.value = false;
-}
-
-function handleDelete() {
-  if (confirm('Are you sure you want to delete this message?')) {
-    deleteMessage(props.message.id);
-  }
-}
-
-/** Group reactions by emoji with counts */
-const groupedReactions = computed(() => {
-  if (!props.message.reactions || props.message.reactions.length === 0) return [];
-
-  const groups = new Map<string, { emoji: string; count: number; hasOwn: boolean }>();
-
-  for (const reaction of props.message.reactions) {
-    const existing = groups.get(reaction.emoji) || {
-      emoji: reaction.emoji,
-      count: 0,
-      hasOwn: false,
-    };
-    existing.count++;
-    if (reaction.user_id === authStore.user?.id) {
-      existing.hasOwn = true;
-    }
-    groups.set(reaction.emoji, existing);
-  }
-
-  return Array.from(groups.values());
-});
-
-function isImageAttachment(mimeType: string): boolean {
-  return mimeType.startsWith('image/');
-}
-
-const mentionParts = computed(() => {
-  const content = props.message.content;
-  const regex = /(@[a-zA-Z0-9_-]{3,50})/g;
-  const parts: Array<{ text: string; mention: boolean }> = [];
-  let lastIndex = 0;
-  let match: RegExpExecArray | null = null;
-  while ((match = regex.exec(content)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push({ text: content.slice(lastIndex, match.index), mention: false });
-    }
-    parts.push({ text: match[0], mention: true });
-    lastIndex = match.index + match[0].length;
-  }
-  if (lastIndex < content.length) {
-    parts.push({ text: content.slice(lastIndex), mention: false });
-  }
-  return parts.length ? parts : [{ text: content, mention: false }];
-});
-
-async function togglePin() {
-  if (!canPin.value || isPinning.value) return;
-  isPinning.value = true;
   try {
-    const updated = isPinned.value
-      ? await messageApi.unpinMessage(props.message.id)
-      : await messageApi.pinMessage(props.message.id);
-    messageStore.updateMessage(updated);
-  } catch (err) {
-    console.error('Failed to toggle pin:', err);
+    if (hasOwnReaction) {
+      await messageApi.removeReaction(channelId, props.message.id, emoji);
+    } else {
+      await messageApi.addReaction(channelId, props.message.id, emoji);
+    }
+  } catch (error: unknown) {
+    console.error('Failed to toggle reaction:', error);
   } finally {
-    isPinning.value = false;
+    showReactionPicker.value = false;
   }
 }
 
-function pollTotalVotes(): number {
-  if (!props.message.poll_data) return 0;
-  return props.message.poll_data.options.reduce((sum, option) => sum + option.votes.length, 0);
-}
-
-function hasVoted(optionId: string): boolean {
-  const userId = authStore.user?.id;
-  if (!userId || !props.message.poll_data) return false;
-  const option = props.message.poll_data.options.find((o) => o.id === optionId);
-  return !!option?.votes.includes(userId);
-}
-
-async function votePoll(optionId: string) {
-  if (isVoting.value) return;
-  isVoting.value = true;
+async function handleDelete() {
+  const channelId = channelStore.activeChannelId;
+  if (!channelId || !confirm('Delete this message?')) {
+    return;
+  }
   try {
-    const updated = await messageApi.votePoll(props.message.id, optionId);
-    messageStore.updateMessage(updated);
-  } catch (err) {
-    console.error('Failed to vote in poll:', err);
-  } finally {
-    isVoting.value = false;
+    await messageApi.deleteMessage(channelId, props.message.id);
+  } catch (error: unknown) {
+    console.error('Failed to delete message:', error);
   }
 }
 </script>
@@ -170,7 +85,6 @@ async function votePoll(optionId: string) {
 <template>
   <div
     class="group flex gap-3 px-4 py-1.5 hover:bg-surface-50 dark:hover:bg-surface-800/50"
-    :class="{ 'bg-primary-50/60 dark:bg-primary-900/20': isMentionedMessage }"
     @mouseenter="showActions = true"
     @mouseleave="showActions = false; showReactionPicker = false"
   >
@@ -193,77 +107,11 @@ async function votePoll(optionId: string) {
         <span v-if="message.is_edited" class="text-xs text-surface-400 italic">
           (edited)
         </span>
-        <span
-          v-if="message.pinned"
-          class="text-xs text-amber-600 dark:text-amber-400"
-          title="Pinned message"
-        >
-          📌 pinned
-        </span>
       </div>
 
-      <!-- Text content -->
       <p class="text-sm text-surface-700 dark:text-surface-300 whitespace-pre-wrap break-words">
-        <span
-          v-for="(part, idx) in mentionParts"
-          :key="idx"
-          :class="part.mention ? 'text-primary-700 dark:text-primary-300 font-medium' : ''"
-        >
-          {{ part.text }}
-        </span>
+        {{ message.content }}
       </p>
-
-      <div
-        v-if="message.message_type === 'poll' && message.poll_data"
-        class="mt-2 p-2 rounded-lg border border-surface-200 dark:border-surface-700 bg-surface-50 dark:bg-surface-800/40"
-      >
-        <div class="text-sm font-medium mb-2">📊 {{ message.poll_data.question }}</div>
-        <div class="space-y-1">
-          <button
-            v-for="option in message.poll_data.options"
-            :key="option.id"
-            class="w-full text-left px-2 py-1 rounded border text-sm transition-colors"
-            :class="hasVoted(option.id)
-              ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-              : 'border-surface-200 dark:border-surface-600 hover:bg-surface-100 dark:hover:bg-surface-700'"
-            :disabled="isVoting"
-            @click="votePoll(option.id)"
-          >
-            <span>{{ option.text }}</span>
-            <span class="ml-2 text-xs text-surface-500">({{ option.votes.length }} votes)</span>
-          </button>
-        </div>
-        <div class="text-xs text-surface-500 mt-1">
-          {{ pollTotalVotes() }} total votes
-        </div>
-      </div>
-
-      <!-- Attachments -->
-      <div v-if="message.attachments && message.attachments.length > 0" class="mt-2 space-y-2">
-        <div v-for="attachment in message.attachments" :key="attachment.id">
-          <img
-            v-if="isImageAttachment(attachment.mime_type)"
-            :src="`/uploads/${attachment.filename}`"
-            :alt="attachment.original_name"
-            class="max-w-sm max-h-64 rounded-lg border border-surface-200 dark:border-surface-700"
-            loading="lazy"
-          />
-          <a
-            v-else
-            :href="`/uploads/${attachment.filename}`"
-            target="_blank"
-            class="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-surface-100 dark:bg-surface-700 hover:bg-surface-200 dark:hover:bg-surface-600 text-sm"
-          >
-            <svg class="w-4 h-4 text-surface-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            <span class="text-surface-700 dark:text-surface-300">{{ attachment.original_name }}</span>
-            <span class="text-xs text-surface-400">({{ Math.round(attachment.file_size / 1024) }}KB)</span>
-          </a>
-        </div>
-      </div>
-
-      <!-- Reactions -->
       <div v-if="groupedReactions.length > 0" class="flex flex-wrap gap-1 mt-1.5">
         <button
           v-for="reaction in groupedReactions"
@@ -278,18 +126,8 @@ async function votePoll(optionId: string) {
           <span>{{ reaction.count }}</span>
         </button>
       </div>
-
-      <!-- Thread indicator -->
-      <button
-        v-if="!message.parent_id && (message.reply_count || 0) > 0"
-        class="mt-1 text-xs text-primary-600 dark:text-primary-400 hover:underline"
-        @click="emit('openThread', message)"
-      >
-        {{ message.reply_count }} {{ message.reply_count === 1 ? 'reply' : 'replies' }}
-      </button>
     </div>
 
-    <!-- Action buttons (appear on hover) -->
     <div
       v-if="showActions"
       class="flex items-center gap-0.5 shrink-0"
@@ -301,28 +139,6 @@ async function votePoll(optionId: string) {
       >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      </button>
-
-      <button
-        v-if="!message.parent_id"
-        class="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-600 text-surface-400"
-        title="Reply in thread"
-        @click="emit('openThread', message)"
-      >
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-        </svg>
-      </button>
-
-      <button
-        v-if="canPin"
-        class="p-1 rounded hover:bg-surface-200 dark:hover:bg-surface-600 text-surface-400"
-        :title="isPinned ? 'Unpin message' : 'Pin message'"
-        @click="togglePin"
-      >
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7V4a1 1 0 00-1-1H9a1 1 0 00-1 1v3L6 9v2h12V9l-2-2zM9 11v9l3-2 3 2v-9" />
         </svg>
       </button>
 

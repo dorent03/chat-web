@@ -1,151 +1,210 @@
-import api from './api';
+import {
+  Timestamp,
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  serverTimestamp,
+  updateDoc,
+} from 'firebase/firestore';
+import { auth, db } from '../config/firebase';
 import type { MessageWithSender, PaginatedResponse, Reaction } from '../types';
 
-/** Get messages for a channel with cursor-based pagination */
-export async function getMessages(
-  channelId: string,
-  options: { limit?: number; before?: string } = {}
-): Promise<PaginatedResponse<MessageWithSender>> {
-  const params = new URLSearchParams();
-  if (options.limit) params.set('limit', String(options.limit));
-  if (options.before) params.set('before', options.before);
+type MessageDoc = {
+  channel_id: string;
+  sender_id: string;
+  sender_username: string;
+  sender_avatar_url: string | null;
+  content: string;
+  message_type: 'text';
+  is_edited: boolean;
+  reactions?: Reaction[];
+  created_at?: Timestamp;
+  updated_at?: Timestamp;
+};
 
-  const response = await api.get<PaginatedResponse<MessageWithSender>>(
-    `/channels/${channelId}/messages?${params.toString()}`
-  );
-  return response.data;
+function toIsoDate(value: unknown): string {
+  if (value instanceof Timestamp) {
+    return value.toDate().toISOString();
+  }
+  return new Date().toISOString();
 }
 
-/** Send a message to a channel (with optional file attachments) */
+function requireAuth(): { userId: string; username: string } {
+  const firebaseUser = auth.currentUser;
+  if (!firebaseUser) {
+    throw new Error('Not authenticated');
+  }
+  return {
+    userId: firebaseUser.uid,
+    username: firebaseUser.displayName ?? firebaseUser.uid,
+  };
+}
+
+function mapMessage(id: string, data: MessageDoc): MessageWithSender {
+  return {
+    id,
+    channel_id: data.channel_id,
+    sender_id: data.sender_id,
+    sender_username: data.sender_username,
+    sender_avatar_url: data.sender_avatar_url,
+    content: data.content,
+    message_type: 'text',
+    is_edited: data.is_edited,
+    reactions: data.reactions ?? [],
+    created_at: toIsoDate(data.created_at),
+    updated_at: toIsoDate(data.updated_at),
+  };
+}
+
+/** Get messages for a channel */
+export async function getMessages(
+  channelId: string,
+  options: { limit?: number } = {}
+): Promise<PaginatedResponse<MessageWithSender>> {
+  const messageLimit = options.limit ?? 50;
+  const messagesQuery = query(
+    collection(db, 'channels', channelId, 'messages'),
+    orderBy('created_at', 'desc'),
+    limit(messageLimit)
+  );
+
+  const snapshot = await getDocs(messagesQuery);
+  const messages = snapshot.docs
+    .map((messageDoc) => mapMessage(messageDoc.id, messageDoc.data() as MessageDoc))
+    .reverse();
+
+  return {
+    data: messages,
+    hasMore: snapshot.docs.length === messageLimit,
+  };
+}
+
+/** Send a text message to a channel */
 export async function sendMessage(
   channelId: string,
   data: {
     content: string;
-    message_type?: string;
-    parent_id?: string | null;
-    files?: File[];
-    poll_data?: {
-      question: string;
-      options: Array<{ id: string; text: string; votes: string[] }>;
-      multiple: boolean;
-    } | null;
   }
 ): Promise<MessageWithSender> {
-  if (data.files && data.files.length > 0) {
-    const formData = new FormData();
-    formData.append('content', data.content);
-    if (data.message_type) formData.append('message_type', data.message_type);
-    if (data.parent_id) formData.append('parent_id', data.parent_id);
-    for (const file of data.files) {
-      formData.append('files', file);
-    }
+  const { userId, username } = requireAuth();
+  const messageRef = await addDoc(collection(db, 'channels', channelId, 'messages'), {
+    channel_id: channelId,
+    sender_id: userId,
+    sender_username: username,
+    sender_avatar_url: null,
+    content: data.content.trim(),
+    message_type: 'text',
+    is_edited: false,
+    reactions: [],
+    created_at: serverTimestamp(),
+    updated_at: serverTimestamp(),
+  });
 
-    const response = await api.post<MessageWithSender>(
-      `/channels/${channelId}/messages`,
-      formData,
-      { headers: { 'Content-Type': 'multipart/form-data' } }
-    );
-    return response.data;
-  }
-
-  const response = await api.post<MessageWithSender>(
-    `/channels/${channelId}/messages`,
-    {
-      content: data.content,
-      message_type: data.message_type || 'text',
-      parent_id: data.parent_id,
-      poll_data: data.poll_data || null,
-    }
-  );
-  return response.data;
+  const messageSnapshot = await getDoc(messageRef);
+  return mapMessage(messageSnapshot.id, messageSnapshot.data() as MessageDoc);
 }
 
 /** Edit a message */
 export async function editMessage(
+  channelId: string,
   messageId: string,
   content: string
 ): Promise<MessageWithSender> {
-  const response = await api.patch<MessageWithSender>(`/messages/${messageId}`, {
-    content,
+  const messageRef = doc(db, 'channels', channelId, 'messages', messageId);
+  await updateDoc(messageRef, {
+    content: content.trim(),
+    is_edited: true,
+    updated_at: serverTimestamp(),
   });
-  return response.data;
+  const snapshot = await getDoc(messageRef);
+  return mapMessage(snapshot.id, snapshot.data() as MessageDoc);
 }
 
 /** Delete a message */
-export async function deleteMessage(messageId: string): Promise<void> {
-  await api.delete(`/messages/${messageId}`);
-}
-
-/** Get thread replies for a message */
-export async function getThread(
-  messageId: string,
-  options: { limit?: number; before?: string } = {}
-): Promise<PaginatedResponse<MessageWithSender>> {
-  const params = new URLSearchParams();
-  if (options.limit) params.set('limit', String(options.limit));
-  if (options.before) params.set('before', options.before);
-
-  const response = await api.get<PaginatedResponse<MessageWithSender>>(
-    `/messages/${messageId}/thread?${params.toString()}`
-  );
-  return response.data;
+export async function deleteMessage(channelId: string, messageId: string): Promise<void> {
+  await deleteDoc(doc(db, 'channels', channelId, 'messages', messageId));
 }
 
 /** Add a reaction to a message */
 export async function addReaction(
+  channelId: string,
   messageId: string,
   emoji: string
 ): Promise<Reaction> {
-  const response = await api.post<Reaction>(`/messages/${messageId}/reactions`, {
+  const { userId, username } = requireAuth();
+  const messageRef = doc(db, 'channels', channelId, 'messages', messageId);
+  const snapshot = await getDoc(messageRef);
+  if (!snapshot.exists()) {
+    throw new Error('Message not found');
+  }
+  const messageData = snapshot.data() as MessageDoc;
+  const existing = messageData.reactions ?? [];
+  const duplicate = existing.some(
+    (reaction) => reaction.user_id === userId && reaction.emoji === emoji
+  );
+  if (duplicate) {
+    return existing.find(
+      (reaction) => reaction.user_id === userId && reaction.emoji === emoji
+    ) as Reaction;
+  }
+
+  const reaction: Reaction = {
+    id: `${userId}_${emoji}`,
+    message_id: messageId,
+    user_id: userId,
+    username,
     emoji,
+  };
+  await updateDoc(messageRef, {
+    reactions: [...existing, reaction],
+    updated_at: serverTimestamp(),
   });
-  return response.data;
+  return reaction;
 }
 
 /** Remove a reaction from a message */
 export async function removeReaction(
+  channelId: string,
   messageId: string,
   emoji: string
 ): Promise<void> {
-  await api.delete(`/messages/${messageId}/reactions/${encodeURIComponent(emoji)}`);
+  const { userId } = requireAuth();
+  const messageRef = doc(db, 'channels', channelId, 'messages', messageId);
+  const snapshot = await getDoc(messageRef);
+  if (!snapshot.exists()) {
+    return;
+  }
+  const messageData = snapshot.data() as MessageDoc;
+  const nextReactions = (messageData.reactions ?? []).filter(
+    (reaction) => !(reaction.user_id === userId && reaction.emoji === emoji)
+  );
+  await updateDoc(messageRef, {
+    reactions: nextReactions,
+    updated_at: serverTimestamp(),
+  });
 }
 
-/** Search messages in a channel */
+/** Search messages in a channel using client-side filtering */
 export async function searchMessages(
   channelId: string,
-  query: string
+  searchQuery: string
 ): Promise<MessageWithSender[]> {
-  const response = await api.get<MessageWithSender[]>(
-    `/channels/${channelId}/messages/search?q=${encodeURIComponent(query)}`
+  const messagesQuery = query(
+    collection(db, 'channels', channelId, 'messages'),
+    orderBy('created_at', 'desc'),
+    limit(200)
   );
-  return response.data;
-}
+  const snapshot = await getDocs(messagesQuery);
+  const normalized = searchQuery.trim().toLowerCase();
 
-/** Get pinned messages in a channel */
-export async function getPinnedMessages(channelId: string): Promise<MessageWithSender[]> {
-  const response = await api.get<MessageWithSender[]>(`/channels/${channelId}/messages/pinned`);
-  return response.data;
-}
-
-/** Pin a message */
-export async function pinMessage(messageId: string): Promise<MessageWithSender> {
-  const response = await api.post<MessageWithSender>(`/messages/${messageId}/pin`);
-  return response.data;
-}
-
-/** Unpin a message */
-export async function unpinMessage(messageId: string): Promise<MessageWithSender> {
-  const response = await api.post<MessageWithSender>(`/messages/${messageId}/unpin`);
-  return response.data;
-}
-
-/** Vote on a poll message */
-export async function votePoll(
-  messageId: string,
-  optionId: string
-): Promise<MessageWithSender> {
-  const response = await api.post<MessageWithSender>(`/messages/${messageId}/poll-vote`, {
-    optionId,
-  });
-  return response.data;
+  return snapshot.docs
+    .map((messageDoc) => mapMessage(messageDoc.id, messageDoc.data() as MessageDoc))
+    .filter((message) => message.content.toLowerCase().includes(normalized))
+    .reverse();
 }

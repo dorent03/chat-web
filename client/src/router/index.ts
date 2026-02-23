@@ -38,8 +38,8 @@ const router = createRouter({
 router.beforeEach(async (to, _from, next) => {
   const authStore = useAuthStore();
 
-  /* Initialize session on first navigation if token exists */
-  if (!authStore.user && authStore.accessToken) {
+  /* Initialize once from Firebase auth state */
+  if (!authStore.isInitialized) {
     await authStore.initSession();
   }
 

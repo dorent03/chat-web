@@ -7,7 +7,6 @@ const router = useRouter();
 const authStore = useAuthStore();
 
 const username = ref('');
-const email = ref('');
 const password = ref('');
 const confirmPassword = ref('');
 const error = ref('');
@@ -28,13 +27,12 @@ async function handleSubmit() {
   try {
     await authStore.register({
       username: username.value,
-      email: email.value,
       password: password.value,
     });
     router.push('/');
   } catch (err: unknown) {
-    const axiosError = err as { response?: { data?: { error?: string } } };
-    error.value = axiosError.response?.data?.error || 'Registration failed. Please try again.';
+    const typedError = err as Error;
+    error.value = typedError.message || 'Registration failed. Please try again.';
   }
 }
 </script>
@@ -55,21 +53,6 @@ async function handleSubmit() {
         placeholder="johndoe"
         minlength="3"
         maxlength="50"
-      />
-    </div>
-
-    <div>
-      <label for="email" class="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
-        Email
-      </label>
-      <input
-        id="email"
-        v-model="email"
-        type="email"
-        required
-        autocomplete="email"
-        class="input-field"
-        placeholder="you@example.com"
       />
     </div>
 

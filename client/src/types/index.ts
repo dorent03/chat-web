@@ -1,11 +1,11 @@
 /** Possible user online statuses */
-export type UserStatus = 'online' | 'offline' | 'away';
+export type UserStatus = 'online' | 'offline';
 
 /** Possible channel types */
 export type ChannelType = 'public' | 'private' | 'direct';
 
 /** Possible message content types */
-export type MessageType = 'text' | 'image' | 'file' | 'poll';
+export type MessageType = 'text';
 
 /** Possible membership roles within a channel */
 export type MemberRole = 'owner' | 'admin' | 'member';
@@ -14,7 +14,7 @@ export type MemberRole = 'owner' | 'admin' | 'member';
 export interface User {
   id: string;
   username: string;
-  email: string;
+  email?: string;
   avatar_url: string | null;
   status: UserStatus;
   last_seen_at?: string | null;
@@ -46,15 +46,8 @@ export interface Message {
   sender_id: string;
   content: string;
   message_type: MessageType;
-  parent_id: string | null;
   is_edited: boolean;
-  pinned?: boolean;
-  mentions?: string[];
-  poll_data?: {
-    question: string;
-    options: Array<{ id: string; text: string; votes: string[] }>;
-    multiple: boolean;
-  } | null;
+  reactions?: Reaction[];
   created_at: string;
   updated_at: string;
 }
@@ -63,9 +56,7 @@ export interface Message {
 export interface MessageWithSender extends Message {
   sender_username: string;
   sender_avatar_url: string | null;
-  reactions?: Reaction[];
-  attachments?: Attachment[];
-  reply_count?: number;
+  reactions: Reaction[];
 }
 
 /** Membership entry */
@@ -83,17 +74,7 @@ export interface Reaction {
   message_id: string;
   user_id: string;
   emoji: string;
-}
-
-/** File attachment on a message */
-export interface Attachment {
-  id: string;
-  message_id: string;
-  filename: string;
-  original_name: string;
-  mime_type: string;
-  file_size: number;
-  storage_path: string;
+  username?: string;
 }
 
 /** Auth response from login/register */
@@ -120,11 +101,4 @@ export interface TypingEvent {
 export interface PresenceEvent {
   userId: string;
   status: UserStatus;
-}
-
-/** Socket read receipt event payload */
-export interface ReadReceiptEvent {
-  channelId: string;
-  userId: string;
-  messageId: string;
 }

@@ -3,19 +3,19 @@ import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '../../stores/auth.store';
 import { useChannelStore } from '../../stores/channel.store';
-import { useSocketStore } from '../../stores/socket.store';
+import { useRealtimeStore } from '../../stores/realtime.store';
 import ChannelList from '../chat/ChannelList.vue';
 import CreateChannel from '../channel/CreateChannel.vue';
 
 const router = useRouter();
 const authStore = useAuthStore();
 const channelStore = useChannelStore();
-const socketStore = useSocketStore();
+const realtimeStore = useRealtimeStore();
 
 const showCreateChannel = ref(false);
 
 async function handleLogout() {
-  socketStore.disconnect();
+  realtimeStore.disconnect();
   await authStore.logout();
   router.push('/login');
 }

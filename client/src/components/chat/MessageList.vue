@@ -6,7 +6,6 @@ import MessageItem from './MessageItem.vue';
 import type { MessageWithSender } from '../../types';
 
 const emit = defineEmits<{
-  (e: 'openThread', message: MessageWithSender): void;
   (e: 'editMessage', message: MessageWithSender): void;
 }>();
 
@@ -19,11 +18,6 @@ const isLoadingMore = ref(false);
 const messages = computed(() => {
   if (!channelStore.activeChannelId) return [];
   return messageStore.messagesByChannel[channelStore.activeChannelId] || [];
-});
-
-const pinnedMessages = computed(() => {
-  if (!channelStore.activeChannelId) return [];
-  return messageStore.pinnedByChannel[channelStore.activeChannelId] || [];
 });
 
 const hasMore = computed(() => {
@@ -142,19 +136,6 @@ function shouldShowDateSeparator(index: number): boolean {
     </div>
 
     <template v-else>
-      <div v-if="pinnedMessages.length > 0" class="px-4 py-2 bg-amber-50 dark:bg-amber-900/10 border-b border-amber-200 dark:border-amber-800">
-        <div class="text-xs font-semibold text-amber-700 dark:text-amber-300 mb-1">Pinned Messages</div>
-        <div class="flex flex-wrap gap-1">
-          <button
-            v-for="pinned in pinnedMessages"
-            :key="`pin-${pinned.id}`"
-            class="text-xs px-2 py-0.5 rounded bg-white dark:bg-surface-700 border border-amber-200 dark:border-amber-700 text-amber-700 dark:text-amber-300 max-w-[260px] truncate"
-            @click="channelStore.setActiveChannel(pinned.channel_id)"
-          >
-            {{ pinned.content }}
-          </button>
-        </div>
-      </div>
       <div v-for="(message, index) in messages" :key="message.id">
         <!-- Date separator -->
         <div
@@ -170,7 +151,6 @@ function shouldShowDateSeparator(index: number): boolean {
 
         <MessageItem
           :message="message"
-          @open-thread="emit('openThread', $event)"
           @edit="emit('editMessage', $event)"
         />
       </div>

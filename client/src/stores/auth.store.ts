@@ -5,32 +5,28 @@ import type { User } from '../types';
 
 export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null);
-  const accessToken = ref<string | null>(localStorage.getItem('accessToken'));
   const isLoading = ref(false);
+  const isInitialized = ref(false);
 
-  const isAuthenticated = computed(() => !!accessToken.value && !!user.value);
+  const isAuthenticated = computed(() => !!user.value);
 
   /** Register a new user */
-  async function register(data: { username: string; email: string; password: string }) {
+  async function register(data: { username: string; password: string }) {
     isLoading.value = true;
     try {
       const response = await authApi.register(data);
       user.value = response.user;
-      accessToken.value = response.accessToken;
-      localStorage.setItem('accessToken', response.accessToken);
     } finally {
       isLoading.value = false;
     }
   }
 
   /** Login an existing user */
-  async function login(data: { email: string; password: string }) {
+  async function login(data: { username: string; password: string }) {
     isLoading.value = true;
     try {
       const response = await authApi.login(data);
       user.value = response.user;
-      accessToken.value = response.accessToken;
-      localStorage.setItem('accessToken', response.accessToken);
     } finally {
       isLoading.value = false;
     }
@@ -42,23 +38,18 @@ export const useAuthStore = defineStore('auth', () => {
       await authApi.logout();
     } finally {
       user.value = null;
-      accessToken.value = null;
-      localStorage.removeItem('accessToken');
     }
   }
 
-  /** Attempt to restore session from stored token */
+  /** Initialize session from Firebase auth state */
   async function initSession() {
-    if (!accessToken.value) return;
-
     isLoading.value = true;
     try {
       user.value = await authApi.getMe();
     } catch {
       user.value = null;
-      accessToken.value = null;
-      localStorage.removeItem('accessToken');
     } finally {
+      isInitialized.value = true;
       isLoading.value = false;
     }
   }
@@ -70,8 +61,8 @@ export const useAuthStore = defineStore('auth', () => {
 
   return {
     user,
-    accessToken,
     isLoading,
+    isInitialized,
     isAuthenticated,
     register,
     login,

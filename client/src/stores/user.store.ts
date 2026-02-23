@@ -37,6 +37,14 @@ export const useUserStore = defineStore('user', () => {
     }
   }
 
+  /** Replace typing users for a channel */
+  function setTypingUsers(
+    channelId: string,
+    users: Array<{ userId: string; username: string }>
+  ) {
+    typingUsers.value[channelId] = users;
+  }
+
   /** Remove a typing indicator */
   function removeTypingUser(channelId: string, userId: string) {
     if (!typingUsers.value[channelId]) return;
@@ -57,6 +65,7 @@ export const useUserStore = defineStore('user', () => {
     setOnlineUsers,
     isOnline,
     addTypingUser,
+    setTypingUsers,
     removeTypingUser,
     getTypingUsers,
   };

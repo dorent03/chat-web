@@ -6,11 +6,7 @@ import type { MessageWithSender, Reaction } from '../types';
 export const useMessageStore = defineStore('message', () => {
   /** Messages keyed by channel ID */
   const messagesByChannel = ref<Record<string, MessageWithSender[]>>({});
-  const pinnedByChannel = ref<Record<string, MessageWithSender[]>>({});
   const hasMoreByChannel = ref<Record<string, boolean>>({});
-  const threadMessages = ref<MessageWithSender[]>([]);
-  const threadParent = ref<MessageWithSender | null>(null);
-  const hasMoreThread = ref(false);
   const isLoading = ref(false);
 
   /** Fetch initial messages for a channel */
@@ -18,35 +14,21 @@ export const useMessageStore = defineStore('message', () => {
     isLoading.value = true;
     try {
       const result = await messageApi.getMessages(channelId, { limit: 50 });
-      /* Messages come newest-first from API; reverse for display oldest-first */
-      messagesByChannel.value[channelId] = result.data.reverse();
+      messagesByChannel.value[channelId] = result.data;
       hasMoreByChannel.value[channelId] = result.hasMore;
     } finally {
       isLoading.value = false;
     }
   }
 
-  /** Fetch pinned messages for a channel */
-  async function fetchPinnedMessages(channelId: string) {
-    pinnedByChannel.value[channelId] = await messageApi.getPinnedMessages(channelId);
+  /** Replace all messages for a channel */
+  function setChannelMessages(channelId: string, messages: MessageWithSender[]) {
+    messagesByChannel.value[channelId] = messages;
   }
 
-  /** Load older messages (infinite scroll) */
+  /** Load older messages (not used in Firebase mode) */
   async function loadOlderMessages(channelId: string) {
-    const existing = messagesByChannel.value[channelId];
-    if (!existing || existing.length === 0) return;
-
-    const oldestMessage = existing[0];
-    const result = await messageApi.getMessages(channelId, {
-      limit: 50,
-      before: oldestMessage.id,
-    });
-
-    messagesByChannel.value[channelId] = [
-      ...result.data.reverse(),
-      ...existing,
-    ];
-    hasMoreByChannel.value[channelId] = result.hasMore;
+    hasMoreByChannel.value[channelId] = false;
   }
 
   /** Add a new message (from socket or optimistic send) */
@@ -61,11 +43,6 @@ export const useMessageStore = defineStore('message', () => {
     );
     if (!exists) {
       messagesByChannel.value[channelId].push(message);
-      if (message.pinned) {
-        if (!pinnedByChannel.value[channelId]) pinnedByChannel.value[channelId] = [];
-        const pinnedExists = pinnedByChannel.value[channelId].some((m) => m.id === message.id);
-        if (!pinnedExists) pinnedByChannel.value[channelId].unshift(message);
-      }
     }
   }
 
@@ -77,20 +54,6 @@ export const useMessageStore = defineStore('message', () => {
     const index = channelMessages.findIndex((m) => m.id === message.id);
     if (index !== -1) {
       channelMessages[index] = { ...channelMessages[index], ...message };
-      const channelId = message.channel_id;
-      if (!pinnedByChannel.value[channelId]) pinnedByChannel.value[channelId] = [];
-      const pinnedIndex = pinnedByChannel.value[channelId].findIndex((m) => m.id === message.id);
-      const isPinnedNow = !!message.pinned;
-      if (isPinnedNow && pinnedIndex === -1) {
-        pinnedByChannel.value[channelId].unshift(channelMessages[index]);
-      } else if (!isPinnedNow && pinnedIndex !== -1) {
-        pinnedByChannel.value[channelId].splice(pinnedIndex, 1);
-      } else if (isPinnedNow && pinnedIndex !== -1) {
-        pinnedByChannel.value[channelId][pinnedIndex] = {
-          ...pinnedByChannel.value[channelId][pinnedIndex],
-          ...message,
-        };
-      }
     }
   }
 
@@ -102,11 +65,6 @@ export const useMessageStore = defineStore('message', () => {
     messagesByChannel.value[channelId] = channelMessages.filter(
       (m) => m.id !== messageId
     );
-    if (pinnedByChannel.value[channelId]) {
-      pinnedByChannel.value[channelId] = pinnedByChannel.value[channelId].filter(
-        (m) => m.id !== messageId
-      );
-    }
   }
 
   /** Add a reaction to a message locally */
@@ -148,71 +106,24 @@ export const useMessageStore = defineStore('message', () => {
     }
   }
 
-  /** Fetch thread messages for a parent message */
-  async function fetchThread(parentMessage: MessageWithSender) {
-    threadParent.value = parentMessage;
-    isLoading.value = true;
-    try {
-      const result = await messageApi.getThread(parentMessage.id, { limit: 50 });
-      threadMessages.value = result.data;
-      hasMoreThread.value = result.hasMore;
-    } finally {
-      isLoading.value = false;
-    }
-  }
-
-  /** Close the thread panel */
-  function closeThread() {
-    threadParent.value = null;
-    threadMessages.value = [];
-    hasMoreThread.value = false;
-  }
-
-  /** Add a thread reply */
-  function addThreadMessage(message: MessageWithSender) {
-    const exists = threadMessages.value.some((m) => m.id === message.id);
-    if (!exists) {
-      threadMessages.value.push(message);
-    }
-
-    /* Update reply_count on the parent in the channel list */
-    if (threadParent.value) {
-      const channelMessages = messagesByChannel.value[message.channel_id];
-      if (channelMessages) {
-        const parent = channelMessages.find((m) => m.id === threadParent.value!.id);
-        if (parent) {
-          parent.reply_count = (parent.reply_count || 0) + 1;
-        }
-      }
-    }
-  }
-
   /** Clear messages for a channel */
   function clearChannel(channelId: string) {
     delete messagesByChannel.value[channelId];
     delete hasMoreByChannel.value[channelId];
-    delete pinnedByChannel.value[channelId];
   }
 
   return {
     messagesByChannel,
-    pinnedByChannel,
     hasMoreByChannel,
-    threadMessages,
-    threadParent,
-    hasMoreThread,
     isLoading,
     fetchMessages,
-    fetchPinnedMessages,
+    setChannelMessages,
     loadOlderMessages,
     addMessage,
     updateMessage,
     removeMessage,
     addReactionLocal,
     removeReactionLocal,
-    fetchThread,
-    closeThread,
-    addThreadMessage,
     clearChannel,
   };
 });

@@ -7,7 +7,6 @@ import UserAvatar from './UserAvatar.vue';
 const authStore = useAuthStore();
 
 const username = ref(authStore.user?.username || '');
-const email = ref(authStore.user?.email || '');
 const currentPassword = ref('');
 const newPassword = ref('');
 const confirmPassword = ref('');
@@ -23,13 +22,12 @@ async function handleUpdateProfile() {
   try {
     const updatedUser = await userApi.updateProfile({
       username: username.value,
-      email: email.value,
     });
     authStore.setUser(updatedUser);
     message.value = 'Profile updated successfully';
   } catch (err: unknown) {
-    const axiosError = err as { response?: { data?: { error?: string } } };
-    error.value = axiosError.response?.data?.error || 'Failed to update profile';
+    const typedError = err as Error;
+    error.value = typedError.message || 'Failed to update profile';
   } finally {
     isSaving.value = false;
   }
@@ -55,8 +53,8 @@ async function handleChangePassword() {
     newPassword.value = '';
     confirmPassword.value = '';
   } catch (err: unknown) {
-    const axiosError = err as { response?: { data?: { error?: string } } };
-    error.value = axiosError.response?.data?.error || 'Failed to change password';
+    const typedError = err as Error;
+    error.value = typedError.message || 'Failed to change password';
   } finally {
     isSaving.value = false;
   }
@@ -77,7 +75,9 @@ async function handleChangePassword() {
           <h3 class="font-semibold text-lg text-surface-900 dark:text-white">
             {{ authStore.user?.username }}
           </h3>
-          <p class="text-sm text-surface-500">{{ authStore.user?.email }}</p>
+          <p class="text-sm text-surface-500">
+            Account managed with username + password
+          </p>
         </div>
       </div>
 
@@ -87,13 +87,6 @@ async function handleChangePassword() {
             Username
           </label>
           <input v-model="username" type="text" class="input-field" required minlength="3" maxlength="50" />
-        </div>
-
-        <div>
-          <label class="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
-            Email
-          </label>
-          <input v-model="email" type="email" class="input-field" required />
         </div>
 
         <button type="submit" :disabled="isSaving" class="btn-primary">

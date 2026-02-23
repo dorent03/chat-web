@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { useAuthStore } from '../../stores/auth.store';
-import { useSocketStore } from '../../stores/socket.store';
+import { useRealtimeStore } from '../../stores/realtime.store';
 import { useChannelStore } from '../../stores/channel.store';
 import ThemeToggle from '../common/ThemeToggle.vue';
 import SearchBar from '../common/SearchBar.vue';
 import UserAvatar from '../user/UserAvatar.vue';
 
 const authStore = useAuthStore();
-const socketStore = useSocketStore();
+const realtimeStore = useRealtimeStore();
 const channelStore = useChannelStore();
 
 defineEmits<{
@@ -58,12 +58,12 @@ defineEmits<{
 
       <div
         class="flex items-center gap-1 text-xs px-2 py-1 rounded-full"
-        :class="socketStore.isConnected
+        :class="realtimeStore.isConnected
           ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
           : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'"
       >
-        <span class="w-1.5 h-1.5 rounded-full" :class="socketStore.isConnected ? 'bg-green-500' : 'bg-red-500'" />
-        {{ socketStore.isConnected ? 'Connected' : 'Disconnected' }}
+        <span class="w-1.5 h-1.5 rounded-full" :class="realtimeStore.isConnected ? 'bg-green-500' : 'bg-red-500'" />
+        {{ realtimeStore.isConnected ? 'Realtime On' : 'Realtime Off' }}
       </div>
 
       <ThemeToggle />

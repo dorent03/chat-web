@@ -6,18 +6,18 @@ import { useAuthStore } from '../../stores/auth.store';
 const router = useRouter();
 const authStore = useAuthStore();
 
-const email = ref('');
+const username = ref('');
 const password = ref('');
 const error = ref('');
 
 async function handleSubmit() {
   error.value = '';
   try {
-    await authStore.login({ email: email.value, password: password.value });
+    await authStore.login({ username: username.value, password: password.value });
     router.push('/');
   } catch (err: unknown) {
-    const axiosError = err as { response?: { data?: { error?: string } } };
-    error.value = axiosError.response?.data?.error || 'Login failed. Please try again.';
+    const typedError = err as Error;
+    error.value = typedError.message || 'Login failed. Please try again.';
   }
 }
 </script>
@@ -25,17 +25,17 @@ async function handleSubmit() {
 <template>
   <form @submit.prevent="handleSubmit" class="space-y-4">
     <div>
-      <label for="email" class="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
-        Email
+      <label for="username" class="block text-sm font-medium text-surface-700 dark:text-surface-300 mb-1">
+        Username
       </label>
       <input
-        id="email"
-        v-model="email"
-        type="email"
+        id="username"
+        v-model="username"
+        type="text"
         required
-        autocomplete="email"
+        autocomplete="username"
         class="input-field"
-        placeholder="you@example.com"
+        placeholder="your username"
       />
     </div>
 
