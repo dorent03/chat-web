@@ -1,0 +1,8 @@
+Freigabe Ihres Eintrages im Lobbyregister des Landtages Brandenburg
+
+${_logoHtml}<br>
+<p>Sehr geehrte Damen und Herren,</p>
+<p>Ihr Eintrag „${entry_name}" (Registernummer ${reg_num}) mit Stand vom ${change_date} wurde von der registerführenden Stelle des Landtages Brandenburg geprüft und freigegeben. Der Eintrag ist damit auf der Seite des Lobbyregisters öffentlich einsehbar.</p>
+<p>Für Rückfragen steht Ihnen die Landtagsverwaltung gerne zur Verfügung.</p>
+
+${_emailFooter}
